@@ -1,0 +1,142 @@
+\documentclass{article}
+
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{amsfonts}
+\usepackage{url}
+
+\usepackage[colorinlistoftodos]{todonotes}
+\newcommand{\filip}[1]{\todo[size=\small,linecolor=violet, backgroundcolor=violet!30!white,bordercolor=violet, textcolor=black]{Filip: #1}}
+\newcommand{\paola}[1]{\todo[size=\small,linecolor=blue!40!white, backgroundcolor=blue!20!white,bordercolor=blue]{Paola: #1}}
+
+\input{macros}
+
+\begin{document}
+
+\section{Idea}
+
+The success probability estimator in \cite{PKC:PosVir21} currently, at the end of each tour, models the projection of the embedded vector $\vec v$ into the final $\beta$ dimensions as:
+\[ \norm{\pi(\vec v)}^2 \sim \sigma^2 \chi^2_\beta \]
+
+This is because, if \(\vec v\) is sampled from a discrete Gaussian, then its projection into a random $\beta$-dimensional subspace is indeed distributed as \(\sigma^2 \cdot \chi^2_{\beta}\).
+However, this model then implicitly assumes that \(\vec v\) is sampled freshly at the end of every tour.
+
+In reality, \(\vec v\) doesn't change when you're attacking a single LWE instance. We have a fixed embedded vector \(\vec v\), and at the end of each tour we are simply projecting it into a (heuristically) random subspace.
+Assuming \(\norm{\vec v}\) is fixed, its projection into a random $\beta$-dimensional subspace follows
+\[\norm{\pi(\vec v)}^2 \sim \norm{\vec v}^2 \cdot \mathrm{Beta}\left(\frac{\beta}{2}, \frac{N-\beta}{2}\right)\]
+and we should accumulate these probabilities instead.
+
+Note we now need to take \(\norm{\vec v}\) as input to the probability estimator.
+
+Of course in practice $\vec v$ is randomised between LWE instances, so its length is not fixed. If we want to estimate success probability against LWE with some secret/error distribution, we can work out the distribution of \(\norm{\vec v}\) and then integrate
+\[\int \mathrm{Pr}(\text{succeed given } \norm{\vec v} = t) \cdot \mathrm{Pr}(\norm{\vec v}= t) dt\]
+or, given that the square norm $\norm{\vec v}^2$ can only take integer values for integer lattices, this becomes the sum
+\[\sum_{x = 1}^\infty \mathrm{Pr}(\text{succeed given } \norm{\vec v}^2 = x) \cdot \mathrm{Pr}(\norm{\vec v}^2 = x)\]
+
+\subsection{Testing the model}
+
+We have two options to test the model (and should do both);
+\begin{enumerate}
+    \item Compute this sum/integral and compare with experimental data;
+    \item Only compute the first term, with some fixed value for $\norm{\vec v}$, and then test the model by rejection-sampling LWE instances to ensure \(\norm{\vec v}\) is in some small desired interval
+\end{enumerate}
+
+\subsection{Advantages of the new model}
+\begin{itemize}
+    \item Hopefully more accurate;
+    \item Allows us to capture various secret and error distributions (in \cite{PKC:PosVir21} they use the Gaussian model for all secret types); hence our model could also explain the different behaviour for different distributions (e.g.\@ the `plateaus' they describe for Gaussian).
+    \item More theoretically justified
+\end{itemize}
+
+\subsection{Computing the Sum}
+How do we compute this sum for different distributions on $\norm{\vec v}$? It will have to be numerically, since the first term is the output of our uSVP success probability simulator.
+It remains to compute the second term for various distributions we wish to model:\footnote{Currently ignoring the fact the last entry is deterministic and treating it as random. We can either fix this (easy) or just say the different is miniscule anyway.}
+
+\begin{itemize}
+    \item \textbf{Centred Binary:} If $\vec v \in \{-1,1\}^{N}$ (uniformly) then $\norm{\vec v}^2$ is constant, so the sum consists of only one term!
+    \item \textbf{Ternary:} If $\vec v \in \{-1, 0, 1\}^{N}$ (uniformly) then \[ \norm{\vec v}^2 \sim \mathrm{Bin}\left(N, \ 2/3 \right)\]
+    \item \textbf{Discrete Gaussian:} While it is difficult to capture the distribution of the \emph{discrete} Gaussian exactly, note that if $\vec v$ were sampled from a \emph{continuous} Gaussian of variance $\sigma^2$ and centre $0$, then $\norm{\vec v}^2 \sim \sigma^2 \chi^2_{N}$.
+    So, we could make the approximation that:
+    \[ \mathrm{Pr}(\norm{\vec v}^2 = x) = \mathrm{Pr}\left(x - \frac{1}{2} \le \sigma^2 \chi^2_{N} \le x + \frac{1}{2}\right) \]
+    with the tails handled accordingly.
+\end{itemize}
+
+\subsubsection{For a Ternary Distribution}
+Then:
+\begin{align*}
+    \Pr\left[\ln \norm{\pi(\omega \vv)} = x\right]
+    % &= \int_{y=0}^{+\infty} \Pr_{\vu=(u_i)_i\sim \SS^{d(m+r)}_{y}}\left[\ln \left(\sum_{i=1^{d\beta_K}}u_i^2\right) = 2x\right] \cdot \Pr\left[\norm{\vv} = y\right] dy
+    % \\
+    &=  \sum_{z=0}^{d(m+r)} \Pr\left[P_{\sqrt{z+d\sigma^2}} = x\right] \cdot \begin{pmatrix}
+        d(r+m) \\ z
+    \end{pmatrix} \frac{2^z}{3^{d(r+m)}}
+\end{align*}
+where:
+\begin{align*}
+    \Pr\left[P_{\sqrt{z+d\sigma^2}} = x\right] &=  \frac{1}{B\left(\frac{f_1}{2}; \frac{f_2}{2}\right)} \left(\frac{f_1}{f_2}\right)^{f_1-1} \left(\frac{{z+d\sigma^2}}{e^{2x}}-1\right)^{\frac{f_1}{2}-1} \left(1+\frac{f_1^2}{f_2^2}\left(\frac{{z+d\sigma^2}}{e^{2x}}-1\right)\right)^{-\frac{f_1+f_2}{2}}
+\end{align*}
+where $\boxed{f_1 = N-d\beta_K, f_2 = d\beta_K}$, and $B$ is the beta function.
+
+
+\subsubsection{For a Discrete Gaussian $\vv$.}\paola{Copied from notes.tex in the other project}
+The previous paragraph models $\norm{\vv}$ with a $\chi$-square distribution, but $\vv$'s first $d(m+r)$ coordinates will in fact be drawn from a discrete Gaussian distribution with integer coefficients and the same variance $\sigma^2$ as in the continuous model (and the last $d$ coordinates will be equal to $\sigma$). It is then natural to discuss how far away the continuous model is from the discrete one. In this more accurate discrete model, using the random variable $Y \sim D_{d(r+m), \sigma}$\paola{Discrete gaussian with $d(r+m)$ integer coefficients and standard deviation $\sigma$}:
+\begin{align*}
+    \Pr\left[\ln \norm{\pi(\omega \vv)} = x\right]
+    % &= \int_{y=0}^{+\infty} \Pr_{\vu=(u_i)_i\sim \SS^{d(m+r)}_{y}}\left[\ln \left(\sum_{i=1^{d\beta_K}}u_i^2\right) = 2x\right] \cdot \Pr\left[\norm{\vv} = y\right] dy
+    % \\
+    % \approx d_{\sph}(x)
+    &=  \sum_{z=0}^{+\infty} \Pr\left[P_{\sqrt{z+d\sigma^2}} = x\right] \cdot \Pr\left[\norm{Y}^2 = z\right].
+    % \\
+    % &= \int_{y=\sigma}^{+\infty} \Pr\left[P_y = x\right] \cdot \frac{\left(\left(\frac{y}{\sigma}\right)^2-d\right)^{\frac{r+m}{2}-1} e^{-\frac{\left(\frac{y}{\sigma}\right)^2-d}{2}}}{2^{\frac{r+m}{2}} \Gamma\left(\frac{m+r}{2}\right)}  dy
+\end{align*}
+Where, denoting
+$s = \sigma \sqrt{2\pi}$,
+$\rho(\vx) = e^{-\pi\frac{\norm{\vx}^2}{s^2}}$ and $\rho(\ZZ^{d(r+m)}) = \sum_{\vx\in\ZZ^{d(r+m)}} \rho(\vx)$:
+\begin{align*}
+    \Pr\left[\norm{Y}^2 = z\right] &= \sum_{\vx\in\ZZ^n \vert \norm{\vx}^2 = z} \frac{e^{-\pi \frac{z}{s^2}}}{\rho(\ZZ^{d(r+m)})}
+    % \\
+    % &= \frac{z^{\frac{d(r+m)-1}{2}} 2 \pi^{d(r+m)} e^{-\pi\frac{z}{\sigma^2}}}{\Gamma\left(\frac{d(r+m)}{2}\right)\rho(\ZZ^{d(r+m)})}
+\end{align*}
+where:
+\begin{align*}
+    \frac{1}{1 + \left(\frac{s}{\sqrt{\pi}}\right)^{d(r+m)}} &\leq \frac{1}{\rho\left(\ZZ^{d(r+m)}\right)} \leq 1
+    \\
+    \frac{1}{1 + \left(\sigma\sqrt{2}\right)^{d(r+m)}} &\leq \frac{1}{\rho\left(\ZZ^{d(r+m)}\right)} \leq 1
+\end{align*}
+and $\sum_{\vx\in\ZZ^n \vert \norm{\vx}^2 = z} e^{-\pi \frac{z}{s^2}}$ is the $z$-th term of $\Theta_{\ZZ^{d(r+m)}}\left(e^{-\frac{\pi}{s^2}}\right)$, where $\Theta_{\ZZ^{d(r+m)}}$ is the theta-serie of $\ZZ^{d(r+m)}$.\paola{Helpful?}
+
+Then,
+as spherical caps around one sphere point with area one are subsets of the radius-one ball around this point,
+we also have:\paola{I thinl we could even prove that it is less than $\frac{1}{\pi}$ times the bound I wrote}\paola{To do: add lower bound, cf. \cite{BAMS:Olds41}: lower bound $6$ 3-representations for $z$ a power of two $\to$ lower bound of $6 \begin{pmatrix}
+    n \\ 3
+\end{pmatrix} = n(n-1)(n-2)$}
+\begin{align*}
+    \sum_{\vx\in\ZZ^n \vert \norm{x}^2 = z} \leq \int_{\SS_{\sqrt{z}}} = \frac{2\sqrt{\pi^{d(r+m)} z^{d(r+m)-1}}}{\Gamma\left(\frac{d(r+m)}{2}\right)}
+\end{align*}
+so finally:
+\begin{align*}
+    \Pr\left[\norm{Y}^2 = z\right] \leq \Pr\left[\norm{X}^2 = z\right]
+\end{align*}
+
+\paola{Forget former (commented) paragraph, was if the discrete Gaussian were a rounded one, but this is not the right approach}
+% \paragraph{An Exact discrete Gaussian Model?}
+
+% The above approximation of the distribution of the square norm of $\vv$ with discrete Gaussian coordinates is not exact, as it performs a discretisation on the square norm variable instead of the individual coordinates.
+% Let us denote $f_\vv$ the cdf of the variable $\norm{\vv}^2$. For each integer $x$ we have:
+
+% \begin{align*}
+%     f_\vv(y) = \sum_{(x_i)_i \in\SS_y} \prod_{i=1}^N \Pr\left(G_i = x_i\right)
+% \end{align*}
+% where $\SS_{y} = \left\{(x_i)_i \in \ZZ^N \vert \sum_{i} x_i^2 = y\right\}$, and the $G_i$ are independent variables following discrete centered Gaussian distributions with standard deviation $\sigma$ and integer values.
+% For any $x_i\in\ZZ$, $\Pr\left(G_i = x_i\right) = \Pr\left(N\in\left[x_i - \frac{1}{2}; x_i + \frac{1}{2}\right]\right)$, for $N$ following a centered normal distribution $\N(0;\sigma)$. Hence, $\Pr\left(G_i = x_i\right) =\frac{1}{2} \left(\erf\left(\frac{2x_i+1}{2\sigma\sqrt{2}}\right) - \erf\left(\frac{2x_i-1}{2\sigma\sqrt{2}}\right) \right)$.
+
+% Moreover, the number of elements in $\SS_y$ is for instance studied in \cite{BAMS:Olds41}. Given $y$ of prime decomposition $2^k\left(\prod_i p_i^{a_i}\right) \left(\prod_j q_j^{b_j}\right)$, where the $p_i$ are primes equal to $1 \mod 4$ and the $q_j$ equal to $3 \mod 4$, $\abs{\SS_y} = 6\left(\prod_i p_i^{a_i}\right) \prod_j \left(q_j^{b_j} + 2\ \frac{q_j^{b_j} - 1}{q_j - 1}\right)$.
+% \paola{Actually complicated to obtain something as the product of the $\erf$ terms does not lead to a simplification allowing to express it in terms of $y$, as in the continuous case. }\paola{Maybe the discrepancy could be estimated though}
+
+
+\bibliographystyle{alpha}
+\bibliography{cryptobib/abbrev3,cryptobib/crypto,more-bib}
+
+
+\end{document}
