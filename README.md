@@ -61,4 +61,4 @@ python3 collect_data.py
 
 This generates the CSV files
 1. `data/beta_model_data.csv` collecting all experimental and simulated success probabilities,
-2. `data/pbkz_statdist.csv` and `data/bkz_statdist.csv`, listing the statistical distances between experiments and simulations.
+2. `data/pbkz_statdist.csv` and `data/bkz_statdist.csv`, listing the total squared errors, and statistical distances, between experiments and simulations.
