@@ -1,6 +1,6 @@
 # beta-is-better
 
-Artefact for Section 3 of the paper _"Refined Modelling of the Primal Attack, and Variants against Module-LWE"_, Paola de Perthuis and Filip Trenkić.
+Artefact for Section 3 of the paper _"Refined Modelling of the Primal Attack, and Variants against Module-LWE"_, Paola de Perthuis and Filip Trenkić ([eprint](https://eprint.iacr.org/2025/2195))
 
 `primalattack.py` runs the primal attack against a single instance of LWE. The LWE parameters, and strategy (progressive or fixed-blocksize), are specified on the command line:
 
